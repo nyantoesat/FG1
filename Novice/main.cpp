@@ -1,30 +1,24 @@
+#include "Config.h"
+#include "Game.h"
+#include "Input.h"
 #include <Novice.h>
 
 const char kWindowTitle[] = "学籍番号";
 
-// Windowsアプリでのエントリーポイント(main関数)
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
+	Novice::Initialize(kWindowTitle, kWindowWidth, kWindowHeight);
 
-	// ライブラリの初期化
-	Novice::Initialize(kWindowTitle, 1280, 720);
+	Game game;
+	game.Initialize();
 
-	// キー入力結果を受け取る箱
-	char keys[256] = {0};
-	char preKeys[256] = {0};
-
-	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
-		// フレームの開始
 		Novice::BeginFrame();
-
-		// キー入力を受け取る
-		memcpy(preKeys, keys, 256);
-		Novice::GetHitKeyStateAll(keys);
+		Input::Update();
 
 		///
 		/// ↓更新処理ここから
 		///
-
+		game.Update();
 		///
 		/// ↑更新処理ここまで
 		///
@@ -32,21 +26,18 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		///
 		/// ↓描画処理ここから
 		///
-
+		game.Draw();
 		///
 		/// ↑描画処理ここまで
 		///
 
-		// フレームの終了
 		Novice::EndFrame();
 
-		// ESCキーが押されたらループを抜ける
-		if (preKeys[DIK_ESCAPE] == 0 && keys[DIK_ESCAPE] != 0) {
+		if (Input::Trigger(DIK_ESCAPE)) {
 			break;
 		}
 	}
 
-	// ライブラリの終了
 	Novice::Finalize();
 	return 0;
 }
