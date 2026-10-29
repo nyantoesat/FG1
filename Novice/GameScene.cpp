@@ -1,6 +1,4 @@
-
 #include "GameScene.h"
-#include "Input.h"
 #include <Novice.h>
 #include <algorithm>
 
@@ -25,19 +23,17 @@ template<typename T> void RemoveDead(std::vector<T>& list) {
 } // namespace
 
 // 初期化
-void GameScene::Initialize(int totalRounds) {
+void GameScene::Initialize(int totalRounds, int totalLives) {
 	map_.Initialize();
 
-	totalRounds_ = totalRounds;
+	totalRounds_ = (std::max)(1, totalRounds);
 
 	circle_ = 0;
-	lives_ = kStartLives;
 	batsKilled_ = 0;
-
 	cleared_ = false;
-	returnToTitle_ = false;
 
-	player_.RefillHearts();
+	// 選択したライフ数を設定
+	player_.SetMaxHearts((std::max)(1, totalLives));
 
 	StartCircle();
 }
@@ -63,8 +59,10 @@ void GameScene::StartCircle() {
 	stateTimer_ = 0;
 }
 
+// プレイヤーを足場に配置
 void GameScene::PutPlayerOnCage() { player_.Spawn(kCageX + kCageWidth * 0.5f - kPlayerWidth * 0.5f, cage_.y - kPlayerHeight); }
 
+// 敵・障害物を削除
 void GameScene::ClearHazards() {
 	rocks_.clear();
 	arrows_.clear();
@@ -79,18 +77,6 @@ void GameScene::Update() {
 
 	case State::Play:
 		UpdatePlay();
-		break;
-
-	case State::LifeLost:
-		if (stateTimer_ > 90) {
-			if (lives_ > 0) {
-				player_.RefillHearts();
-				StartCircle();
-			} else {
-				state_ = State::GameOver;
-				stateTimer_ = 0;
-			}
-		}
 		break;
 
 	case State::Descend:
@@ -124,26 +110,37 @@ void GameScene::Update() {
 		break;
 
 	case State::GameOver:
-		if (stateTimer_ > 40 && Input::JumpTrigger()) {
-			returnToTitle_ = true;
-		}
 		break;
 	}
 }
 
-// プレイ中
+// プレイ中の更新
 void GameScene::UpdatePlay() {
 	cage_.vy = 0.0f;
 
 	player_.Update(map_, cage_, true);
 
+	// 画面外に落ちた場合
+	if (player_.FellOut()) {
+		player_.LoseHeart();
+		PutPlayerOnCage();
+	}
+
+	// ライフが0になったらゲームオーバー
+	if (player_.GetHearts() <= 0) {
+		ClearHazards();
+		state_ = State::GameOver;
+		stateTimer_ = 0;
+		return;
+	}
+
 	UpdateWaves();
 
-	// ウェーブ終了直後は敵の更新をしない
 	if (state_ != State::Play) {
 		return;
 	}
 
+	// 敵・障害物の更新
 	for (Rock& r : rocks_) {
 		r.Update(cage_);
 	}
@@ -162,15 +159,10 @@ void GameScene::UpdatePlay() {
 	RemoveDead(arrows_);
 	RemoveDead(bats_);
 
-	if (player_.FellOut()) {
-		player_.LoseHeart();
-		PutPlayerOnCage();
-	}
-
+	// ダメージでライフが0になった場合
 	if (player_.GetHearts() <= 0) {
-		lives_--;
-
-		state_ = State::LifeLost;
+		ClearHazards();
+		state_ = State::GameOver;
 		stateTimer_ = 0;
 	}
 }
@@ -183,13 +175,10 @@ void GameScene::UpdateWaves() {
 	}
 
 	SpawnHazards();
-
 	waveTimer_--;
 
 	if (waveTimer_ <= 0) {
-		// ウェーブ終了時に敵と障害物を消す
 		ClearHazards();
-
 		wave_++;
 
 		if (wave_ >= kWavesPerCircle) {
@@ -256,7 +245,7 @@ void GameScene::SpawnArrow() {
 	arrows_.push_back(a);
 }
 
-// Bat
+// コウモリ
 void GameScene::SpawnBat() {
 	Bat b;
 
@@ -271,21 +260,23 @@ void GameScene::SpawnBat() {
 void GameScene::CheckHits() {
 	Rect p = player_.GetRect();
 
+	// 落石
 	for (Rock& r : rocks_) {
 		if (r.IsDangerous() && Intersects(p, r.GetRect())) {
 			player_.Damage();
 		}
 	}
 
+	// 矢
 	for (Arrow& a : arrows_) {
 		if (a.IsDangerous() && Intersects(p, a.GetRect())) {
-
 			if (player_.Damage()) {
 				a.alive = false;
 			}
 		}
 	}
 
+	// コウモリ
 	for (Bat& b : bats_) {
 		Rect br = b.GetRect();
 
@@ -324,24 +315,25 @@ void GameScene::Draw() {
 		b.Draw();
 	}
 
-	if (state_ != State::LifeLost || (stateTimer_ / 6) % 2 == 0) {
-		player_.Draw();
-	}
-
+	player_.Draw();
 	DrawHud();
 }
 
 // HUD
 void GameScene::DrawHud() const {
-	for (int i = 0; i < kMaxHearts; i++) {
-		unsigned int color = i < player_.GetHearts() ? 0x8FDCC8FF : 0x3E4A5AFF;
+	int hearts = player_.GetHearts();
+	int maxHearts = player_.GetMaxHearts();
 
-		Novice::DrawBox(640 - kMaxHearts * 20 + i * 40 + 6, 20, 28, 24, 0.0f, color, kFillModeSolid);
+	// 緑色のライフ表示
+	for (int i = 0; i < maxHearts; i++) {
+		unsigned int color = i < hearts ? 0x8FDCC8FF : 0x3E4A5AFF;
+
+		Novice::DrawBox(640 - maxHearts * 20 + i * 40 + 6, 20, 28, 24, 0.0f, color, kFillModeSolid);
 	}
 
 	Novice::ScreenPrintf(20, 20, "ROUND %d / %d", (std::min)(circle_ + 1, totalRounds_), totalRounds_);
 
-	Novice::ScreenPrintf(20, 40, "LIVES %d", lives_);
+	Novice::ScreenPrintf(20, 40, "LIVES %d", hearts);
 
 	Novice::ScreenPrintf(20, 60, "BATS %d", batsKilled_);
 
@@ -361,25 +353,19 @@ void GameScene::DrawHud() const {
 		}
 	}
 
-	if (state_ == State::LifeLost) {
-		Novice::ScreenPrintf(590, 300, "-1 LIFE (%d left)", lives_);
-	}
-
 	if (state_ == State::Descend || state_ == State::Arrive) {
 		Novice::ScreenPrintf(570, 300, "GOING DOWN...");
 	}
-
-	if (state_ == State::GameOver) {
-		Novice::ScreenPrintf(590, 300, "GAME OVER");
-
-		Novice::ScreenPrintf(540, 330, "REACHED ROUND %d", circle_ + 1);
-
-		Novice::ScreenPrintf(550, 360, "SPACE : TITLE");
-	}
 }
 
+// クリア判定
 bool GameScene::IsCleared() const { return cleared_; }
 
-bool GameScene::IsReturnToTitle() const { return returnToTitle_; }
+// ゲームオーバー判定
+bool GameScene::IsGameOver() const { return state_ == State::GameOver; }
 
+// 全ラウンド数
 int GameScene::GetTotalRounds() const { return totalRounds_; }
+
+// 到達ラウンド数
+int GameScene::GetReachedRound() const { return (std::min)(circle_ + 1, totalRounds_); }

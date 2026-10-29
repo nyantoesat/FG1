@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include "Cage.h"
@@ -9,30 +8,32 @@
 
 class GameScene {
 public:
-	void Initialize(int totalRounds);
+	void Initialize(int totalRounds, int totalLives);
 	void Update();
 	void Draw();
 
 	bool IsCleared() const;
-	bool IsReturnToTitle() const;
+	bool IsGameOver() const;
+
 	int GetTotalRounds() const;
+	int GetReachedRound() const;
 
 private:
-	enum class State { Play, LifeLost, Descend, Arrive, GameOver };
+	enum class State { Play, Descend, Arrive, GameOver };
 
 	void StartCircle();
 	void UpdatePlay();
 	void UpdateWaves();
+
 	void SpawnHazards();
 	void CheckHits();
-
-	void PutPlayerOnCage();
 	void ClearHazards();
 
 	void SpawnRock();
 	void SpawnArrow();
 	void SpawnBat();
 
+	void PutPlayerOnCage();
 	void DrawHud() const;
 
 	Map map_;
@@ -44,14 +45,12 @@ private:
 	std::vector<Bat> bats_;
 
 	State state_ = State::Play;
-
 	int stateTimer_ = 0;
 
 	int totalRounds_ = 5;
 	int circle_ = 0;
 	int wave_ = 0;
 
-	int lives_ = kStartLives;
 	int batsKilled_ = 0;
 
 	int waveTimer_ = 0;
@@ -62,5 +61,4 @@ private:
 	int batTimer_ = 0;
 
 	bool cleared_ = false;
-	bool returnToTitle_ = false;
 };
