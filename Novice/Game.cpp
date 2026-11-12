@@ -1,7 +1,9 @@
+
 #include "Game.h"
 
 void Game::Initialize() {
 	titleScene_.Initialize();
+	skillManager_.Initialize();
 	scene_ = Scene::Title;
 }
 
@@ -15,7 +17,9 @@ void Game::Update() {
 			int rounds = titleScene_.GetSelectedRounds();
 			int lives = titleScene_.GetSelectedLives();
 
+			skillManager_.Initialize();
 			gameScene_.Initialize(rounds, lives);
+
 			scene_ = Scene::Playing;
 		}
 		break;
@@ -27,8 +31,23 @@ void Game::Update() {
 			clearScene_.Initialize(gameScene_.GetTotalRounds());
 			scene_ = Scene::Clear;
 		} else if (gameScene_.IsGameOver()) {
-			gameOverScene_.Initialize(gameScene_.GetReachedRound());
-			scene_ = Scene::GameOver;
+			skillSelectScene_.Initialize(skillManager_);
+			scene_ = Scene::SkillSelect;
+		}
+		break;
+
+	case Scene::SkillSelect:
+		skillSelectScene_.Update();
+
+		if (skillSelectScene_.IsFinished()) {
+			SkillType selectedSkill = skillSelectScene_.GetSelectedSkill();
+
+			skillManager_.AcquireSkill(selectedSkill);
+
+			// 死亡したラウンドから再開
+			gameScene_.RestartCurrentRound(skillManager_);
+
+			scene_ = Scene::Playing;
 		}
 		break;
 
@@ -61,6 +80,10 @@ void Game::Draw() {
 
 	case Scene::Playing:
 		gameScene_.Draw();
+		break;
+
+	case Scene::SkillSelect:
+		skillSelectScene_.Draw();
 		break;
 
 	case Scene::Clear:

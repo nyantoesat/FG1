@@ -1,3 +1,4 @@
+
 #include "GameScene.h"
 #include <Novice.h>
 #include <algorithm>
@@ -22,23 +23,75 @@ template<typename T> void RemoveDead(std::vector<T>& list) {
 
 } // namespace
 
-// 初期化
+// ===================== 初期化 =====================
+
 void GameScene::Initialize(int totalRounds, int totalLives) {
 	map_.Initialize();
 
 	totalRounds_ = (std::max)(1, totalRounds);
+	baseLives_ = (std::max)(1, totalLives);
 
 	circle_ = 0;
 	batsKilled_ = 0;
 	cleared_ = false;
 
-	// 選択したライフ数を設定
-	player_.SetMaxHearts((std::max)(1, totalLives));
+	shieldCharges_ = 0;
+	enemySpeedScale_ = 1.0f;
+
+	player_.SetMaxHearts(baseLives_);
+	player_.SetMovementMultiplier(1.0f, 1.0f);
+
+	cage_.SetWidth(kCageWidth);
+	cage_.SetBreakEnabled(false);
 
 	StartCircle();
 }
 
-// ラウンド開始
+// ===================== スキル =====================
+
+void GameScene::ApplySkills(const SkillManager& skills) {
+	int lifeLevel = skills.GetSkillLevel(SkillType::LifeUp);
+
+	int speedLevel = skills.GetSkillLevel(SkillType::SpeedUp);
+
+	int jumpLevel = skills.GetSkillLevel(SkillType::JumpUp);
+
+	int shieldLevel = skills.GetSkillLevel(SkillType::Shield);
+
+	int slowLevel = skills.GetSkillLevel(SkillType::SlowDown);
+
+	int floorLevel = skills.GetSkillLevel(SkillType::FloorUp);
+
+	// 最大ライフ増加
+	player_.SetMaxHearts(baseLives_ + lifeLevel);
+
+	// 移動速度・ジャンプ力
+	player_.SetMovementMultiplier(1.0f + speedLevel * 0.15f, 1.0f + jumpLevel * 0.15f);
+
+	// シールド
+	shieldCharges_ = shieldLevel;
+
+	// 敵の移動速度を低下
+	enemySpeedScale_ = (std::max)(0.5f, 1.0f - slowLevel * 0.1f);
+
+	// 足場を左右均等に拡張
+	float newWidth = kCageWidth * (1.0f + floorLevel * 0.2f);
+
+	float maxWidth = kShaftRight - kShaftLeft - 20.0f;
+
+	cage_.SetWidth((std::min)(newWidth, maxWidth));
+}
+
+// 死亡したラウンドから再開
+void GameScene::RestartCurrentRound(const SkillManager& skills) {
+	ApplySkills(skills);
+
+	// circle_は変更しない
+	StartCircle();
+}
+
+// ===================== ラウンド =====================
+
 void GameScene::StartCircle() {
 	wave_ = 0;
 
@@ -52,6 +105,13 @@ void GameScene::StartCircle() {
 	cage_.y = kCageRestY;
 	cage_.vy = 0.0f;
 
+	// ラウンド4から崩れる床
+	cage_.SetBreakEnabled(circle_ >= 3);
+	cage_.ResetFloor();
+
+	// トゲ床
+	spike_.Initialize(cage_);
+
 	ClearHazards();
 	PutPlayerOnCage();
 
@@ -59,17 +119,38 @@ void GameScene::StartCircle() {
 	stateTimer_ = 0;
 }
 
-// プレイヤーを足場に配置
-void GameScene::PutPlayerOnCage() { player_.Spawn(kCageX + kCageWidth * 0.5f - kPlayerWidth * 0.5f, cage_.y - kPlayerHeight); }
+// プレイヤーを足場中央に配置
+void GameScene::PutPlayerOnCage() { player_.Spawn(cage_.x + cage_.GetWidth() * 0.5f - kPlayerWidth * 0.5f, cage_.y - kPlayerHeight); }
 
-// 敵・障害物を削除
 void GameScene::ClearHazards() {
 	rocks_.clear();
 	arrows_.clear();
 	bats_.clear();
 }
 
-// 更新
+// ===================== ダメージ =====================
+
+// ダメージが通った場合はtrue
+bool GameScene::TakeDamage() {
+	int oldHearts = player_.GetHearts();
+
+	// Player::Damageで無敵時間を管理
+	if (!player_.Damage()) {
+		return false;
+	}
+
+	if (shieldCharges_ > 0) {
+		shieldCharges_--;
+
+		// シールドがライフ減少を打ち消す
+		player_.RestoreOneHeart();
+	}
+
+	return player_.GetHearts() < oldHearts || shieldCharges_ >= 0;
+}
+
+// ===================== 更新 =====================
+
 void GameScene::Update() {
 	stateTimer_++;
 
@@ -114,19 +195,37 @@ void GameScene::Update() {
 	}
 }
 
-// プレイ中の更新
+// ===================== プレイ中 =====================
+
 void GameScene::UpdatePlay() {
 	cage_.vy = 0.0f;
 
 	player_.Update(map_, cage_, true);
 
-	// 画面外に落ちた場合
+	Rect p = player_.GetRect();
+
+	// ラウンド4から崩れる床
+	if (circle_ >= 3) {
+		bool onBreakFloor = player_.IsOnGround() && cage_.IsOnBreakFloor(p.x, p.x + p.w);
+
+		cage_.UpdateFloor(onBreakFloor);
+	}
+
+	// ラウンド3からトゲ床
+	if (circle_ >= 2) {
+		spike_.Update(cage_);
+
+		if (spike_.IsDangerous() && Intersects(player_.GetRect(), spike_.GetRect())) {
+			TakeDamage();
+		}
+	}
+
+	// 落下時の処理
 	if (player_.FellOut()) {
 		player_.LoseHeart();
 		PutPlayerOnCage();
 	}
 
-	// ライフが0になったらゲームオーバー
 	if (player_.GetHearts() <= 0) {
 		ClearHazards();
 		state_ = State::GameOver;
@@ -140,17 +239,19 @@ void GameScene::UpdatePlay() {
 		return;
 	}
 
-	// 敵・障害物の更新
+	// 落石
 	for (Rock& r : rocks_) {
-		r.Update(cage_);
+		r.Update(cage_, enemySpeedScale_);
 	}
 
+	// 矢
 	for (Arrow& a : arrows_) {
-		a.Update();
+		a.Update(enemySpeedScale_);
 	}
 
+	// コウモリ
 	for (Bat& b : bats_) {
-		b.Update(player_.GetCenter());
+		b.Update(player_.GetCenter(), enemySpeedScale_);
 	}
 
 	CheckHits();
@@ -159,7 +260,6 @@ void GameScene::UpdatePlay() {
 	RemoveDead(arrows_);
 	RemoveDead(bats_);
 
-	// ダメージでライフが0になった場合
 	if (player_.GetHearts() <= 0) {
 		ClearHazards();
 		state_ = State::GameOver;
@@ -167,7 +267,8 @@ void GameScene::UpdatePlay() {
 	}
 }
 
-// ウェーブ管理
+// ===================== ウェーブ =====================
+
 void GameScene::UpdateWaves() {
 	if (breakTimer_ > 0) {
 		breakTimer_--;
@@ -195,7 +296,8 @@ void GameScene::UpdateWaves() {
 	}
 }
 
-// 障害物の生成
+// ===================== 障害物生成 =====================
+
 void GameScene::SpawnHazards() {
 	if (--rockTimer_ <= 0) {
 		SpawnRock();
@@ -216,13 +318,10 @@ void GameScene::SpawnHazards() {
 	}
 }
 
-// 落石
 void GameScene::SpawnRock() {
 	Rock r;
 
-	float playerX = player_.GetCenter().x;
-
-	r.x = playerX - Rock::kSize * 0.5f + RandomFloat(-40.0f, 40.0f);
+	r.x = player_.GetCenter().x - Rock::kSize * 0.5f + RandomFloat(-40.0f, 40.0f);
 
 	r.x = Clamp(r.x, kShaftLeft, kShaftRight - Rock::kSize);
 
@@ -232,7 +331,6 @@ void GameScene::SpawnRock() {
 	rocks_.push_back(r);
 }
 
-// 矢
 void GameScene::SpawnArrow() {
 	Arrow a;
 
@@ -245,7 +343,6 @@ void GameScene::SpawnArrow() {
 	arrows_.push_back(a);
 }
 
-// コウモリ
 void GameScene::SpawnBat() {
 	Bat b;
 
@@ -256,21 +353,23 @@ void GameScene::SpawnBat() {
 	bats_.push_back(b);
 }
 
-// 当たり判定
+// ===================== 当たり判定 =====================
+
 void GameScene::CheckHits() {
 	Rect p = player_.GetRect();
 
 	// 落石
 	for (Rock& r : rocks_) {
 		if (r.IsDangerous() && Intersects(p, r.GetRect())) {
-			player_.Damage();
+			TakeDamage();
 		}
 	}
 
 	// 矢
 	for (Arrow& a : arrows_) {
 		if (a.IsDangerous() && Intersects(p, a.GetRect())) {
-			if (player_.Damage()) {
+
+			if (TakeDamage()) {
 				a.alive = false;
 			}
 		}
@@ -291,17 +390,23 @@ void GameScene::CheckHits() {
 			batsKilled_++;
 			player_.Bounce();
 		} else {
-			player_.Damage();
+			TakeDamage();
 		}
 	}
 }
 
-// 描画
+// ===================== 描画 =====================
+
 void GameScene::Draw() {
 	Novice::DrawBox(0, 0, kWindowWidth, kWindowHeight, 0.0f, 0x1C2033FF, kFillModeSolid);
 
 	map_.Draw();
 	cage_.Draw();
+
+	// ラウンド3から表示
+	if (state_ == State::Play && circle_ >= 2) {
+		spike_.Draw();
+	}
 
 	for (const Rock& r : rocks_) {
 		r.Draw();
@@ -319,12 +424,12 @@ void GameScene::Draw() {
 	DrawHud();
 }
 
-// HUD
+// ===================== HUD =====================
+
 void GameScene::DrawHud() const {
 	int hearts = player_.GetHearts();
 	int maxHearts = player_.GetMaxHearts();
 
-	// 緑色のライフ表示
 	for (int i = 0; i < maxHearts; i++) {
 		unsigned int color = i < hearts ? 0x8FDCC8FF : 0x3E4A5AFF;
 
@@ -336,6 +441,8 @@ void GameScene::DrawHud() const {
 	Novice::ScreenPrintf(20, 40, "LIVES %d", hearts);
 
 	Novice::ScreenPrintf(20, 60, "BATS %d", batsKilled_);
+
+	Novice::ScreenPrintf(20, 80, "SHIELD %d", shieldCharges_);
 
 	Novice::ScreenPrintf(1000, 20, "WAVE %d / %d", (std::min)(wave_ + 1, kWavesPerCircle), kWavesPerCircle);
 
@@ -358,14 +465,12 @@ void GameScene::DrawHud() const {
 	}
 }
 
-// クリア判定
+// ===================== 状態取得 =====================
+
 bool GameScene::IsCleared() const { return cleared_; }
 
-// ゲームオーバー判定
 bool GameScene::IsGameOver() const { return state_ == State::GameOver; }
 
-// 全ラウンド数
 int GameScene::GetTotalRounds() const { return totalRounds_; }
 
-// 到達ラウンド数
 int GameScene::GetReachedRound() const { return (std::min)(circle_ + 1, totalRounds_); }

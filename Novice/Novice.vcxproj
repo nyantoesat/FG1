@@ -180,6 +180,8 @@ xcopy C:\KamataEngine\DirectXGame\Resources "$(OutDirFullPath)NoviceResources" /
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Map.cpp" />
     <ClCompile Include="Player.cpp" />
+    <ClCompile Include="SkillManager.cpp" />
+    <ClCompile Include="SkillSelectScene.cpp" />
     <ClCompile Include="TitleScene.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -222,6 +224,8 @@ xcopy C:\KamataEngine\DirectXGame\Resources "$(OutDirFullPath)NoviceResources" /
     <ClInclude Include="Map.h" />
     <ClInclude Include="mathutil.h" />
     <ClInclude Include="Player.h" />
+    <ClInclude Include="SkillManager.h" />
+    <ClInclude Include="SkillSelectScene.h" />
     <ClInclude Include="TitleScene.h" />
     <ClInclude Include="Vector2.h" />
   </ItemGroup>

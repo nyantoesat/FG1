@@ -53,6 +53,12 @@
     <ClCompile Include="GameOverScene.cpp">
       <Filter>KamataEngine</Filter>
     </ClCompile>
+    <ClCompile Include="SkillManager.cpp">
+      <Filter>KamataEngine</Filter>
+    </ClCompile>
+    <ClCompile Include="SkillSelectScene.cpp">
+      <Filter>KamataEngine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="C:\KamataEngine\DirectXGame\audio\Audio.h">
@@ -150,5 +156,7 @@
     <ClInclude Include="TitleScene.h" />
     <ClInclude Include="ClearScene.h" />
     <ClInclude Include="GameOverScene.h" />
+    <ClInclude Include="SkillManager.h" />
+    <ClInclude Include="SkillSelectScene.h" />
   </ItemGroup>
 </Project>

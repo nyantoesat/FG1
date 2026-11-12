@@ -18,7 +18,6 @@ void Player::Spawn(float x, float y) {
 	vel_ = {0.0f, 0.0f};
 
 	prevBottom_ = y + kPlayerHeight;
-
 	onGround_ = false;
 
 	coyoteTimer_ = 0;
@@ -63,7 +62,9 @@ void Player::HandleHorizontal(bool controllable) {
 	if (dir != 0) {
 		float accel = onGround_ ? kPlayerGroundAccel : kPlayerAirAccel;
 
-		vel_.x = Clamp(vel_.x + dir * accel, -kPlayerMaxSpeed, kPlayerMaxSpeed);
+		float maxSpeed = kPlayerMaxSpeed * speedMultiplier_;
+
+		vel_.x = Clamp(vel_.x + dir * accel * speedMultiplier_, -maxSpeed, maxSpeed);
 
 		facing_ = dir;
 	} else {
@@ -77,14 +78,12 @@ void Player::HandleHorizontal(bool controllable) {
 
 // ジャンプ
 void Player::HandleJump(bool controllable) {
-	// ジャンプ入力を保存
 	if (controllable && Input::JumpTrigger()) {
 		jumpBufferTimer_ = kJumpBufferFrames;
 	} else if (jumpBufferTimer_ > 0) {
 		jumpBufferTimer_--;
 	}
 
-	// ジャンプ可能時間
 	if (onGround_) {
 		coyoteTimer_ = kCoyoteFrames;
 	} else if (coyoteTimer_ > 0) {
@@ -96,7 +95,7 @@ void Player::HandleJump(bool controllable) {
 	}
 
 	if (coyoteTimer_ > 0) {
-		vel_.y = -kJumpPower;
+		vel_.y = -kJumpPower * jumpMultiplier_;
 	} else {
 		return;
 	}
@@ -110,7 +109,6 @@ void Player::HandleJump(bool controllable) {
 void Player::ApplyGravity(bool controllable) {
 	float gravity = kGravity;
 
-	// ジャンプボタンを離したら早く落下
 	if (vel_.y < 0.0f && !(controllable && Input::JumpPress())) {
 		gravity *= 2.2f;
 	}
@@ -163,19 +161,21 @@ void Player::MoveY(const Map& map, const Cage& cage) {
 
 	Rect c = cage.GetRect();
 
-	bool overlapX = pos_.x + kPlayerWidth > c.x && pos_.x < c.x + c.w;
-
+	float left = pos_.x;
+	float right = pos_.x + kPlayerWidth;
 	float bottom = pos_.y + kPlayerHeight;
 
-	// 足場への着地
-	if (overlapX && vel_.y >= 0.0f && prevBottom_ <= c.y + 1.0f && bottom >= c.y) {
+	bool overlapX = right > c.x && left < c.x + c.w;
+
+	bool canLand = cage.CanLand(left, right);
+
+	if (overlapX && canLand && vel_.y >= 0.0f && prevBottom_ <= c.y + 1.0f && bottom >= c.y) {
 
 		pos_.y = c.y - kPlayerHeight;
 		vel_.y = 0.0f;
 		onGround_ = true;
 	}
 
-	// 画面上部への移動を制限
 	if (pos_.y < 0.0f) {
 		pos_.y = 0.0f;
 
@@ -206,7 +206,7 @@ void Player::LoseHeart() {
 	invincibleTimer_ = kInvincibleFrames;
 }
 
-// 敵を踏んだときのジャンプ
+// 踏みつけ
 void Player::Bounce() {
 	vel_.y = -10.0f;
 	onGround_ = false;
@@ -214,15 +214,12 @@ void Player::Bounce() {
 
 // 描画
 void Player::Draw() const {
-	// ダメージ後の点滅
 	if (invincibleTimer_ > 0 && (invincibleTimer_ / 4) % 2 == 0) {
 		return;
 	}
 
-	// プレイヤー本体
 	Novice::DrawBox((int)pos_.x, (int)pos_.y, (int)kPlayerWidth, (int)kPlayerHeight, 0.0f, 0xE8F8F0FF, kFillModeSolid);
 
-	// 目
 	int eyeX = facing_ > 0 ? (int)(pos_.x + kPlayerWidth) - 8 : (int)pos_.x + 4;
 
 	Novice::DrawBox(eyeX, (int)pos_.y + 8, 4, 6, 0.0f, 0x1C2033FF, kFillModeSolid);

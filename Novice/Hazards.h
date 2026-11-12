@@ -1,5 +1,6 @@
 
 #pragma once
+
 #include "MathUtil.h"
 
 struct Cage;
@@ -15,7 +16,7 @@ struct Rock {
 	int warnTimer = kWarnFrames;
 	bool alive = true;
 
-	void Update(const Cage& cage);
+	void Update(const Cage& cage, float speedScale = 1.0f);
 	void Draw() const;
 
 	bool IsDangerous() const { return warnTimer == 0; }
@@ -36,7 +37,7 @@ struct Arrow {
 	int warnTimer = kWarnFrames;
 	bool alive = true;
 
-	void Update();
+	void Update(float speedScale = 1.0f);
 	void Draw() const;
 
 	bool IsDangerous() const { return warnTimer == 0; }
@@ -56,8 +57,35 @@ struct Bat {
 	float phase = 0.0f;
 	bool alive = true;
 
-	void Update(const Vector2& target);
+	void Update(const Vector2& target, float speedScale = 1.0f);
+
 	void Draw() const;
 
 	Rect GetRect() const { return {pos.x, pos.y, kWidth, kHeight}; }
+};
+
+// ===================== Spike =====================
+struct Spike {
+	static constexpr float kWidth = 80.0f;
+	static constexpr float kHeight = 24.0f;
+
+	static constexpr int kWarnFrames = 60;
+	static constexpr int kActiveFrames = 90;
+	static constexpr int kRestFrames = 90;
+
+	enum class State { Warning, Active, Rest };
+
+	float x = 0.0f;
+	float y = 0.0f;
+
+	State state = State::Warning;
+	int timer = kWarnFrames;
+
+	void Initialize(const Cage& cage);
+	void Update(const Cage& cage);
+	void Draw() const;
+
+	bool IsDangerous() const { return state == State::Active; }
+
+	Rect GetRect() const { return {x, y - kHeight, kWidth, kHeight}; }
 };
