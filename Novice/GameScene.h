@@ -24,7 +24,7 @@ public:
 	int GetReachedRound() const;
 
 private:
-	enum class State { Play, Descend, Arrive, SkillPending, GameOver };
+	enum class State { Play, Descend, Arrive, SkillPending, SkillReady, GameOver };
 
 	void StartCircle();
 	void UpdatePlay();
@@ -76,4 +76,7 @@ private:
 
 	bool cleared_ = false;
 	bool damageTakenThisFrame_ = false;
+
+	// 60FPS × 1秒
+	static constexpr int kSkillReadyFrames = 60;
 };

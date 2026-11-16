@@ -1,3 +1,4 @@
+
 #include "GameScene.h"
 
 #include <Novice.h>
@@ -37,7 +38,7 @@ void GameScene::Initialize(int totalRounds, int totalLives) {
 	enemySpeedScale_ = 1.0f;
 	damageTakenThisFrame_ = false;
 
-	// タイトル画面で設定したHP
+	// タイトル画面で設定したHPを反映
 	player_.SetMaxHearts((std::max)(1, totalLives));
 	player_.SetMovementMultiplier(1.0f, 1.0f);
 
@@ -64,21 +65,20 @@ void GameScene::ApplySkills(const SkillManager& skills) {
 
 	player_.SetMovementMultiplier(1.0f + speedLevel * 0.15f, 1.0f + jumpLevel * 0.15f);
 
-	// シールドは取得数に応じて補充
+	// シールド数
 	shieldCharges_ = shieldLevel;
 
+	// 敵の速度低下
 	enemySpeedScale_ = (std::max)(0.5f, 1.0f - slowLevel * 0.1f);
 
+	// 足場の横幅拡張
 	const float newWidth = kCageWidth * (1.0f + floorLevel * 0.2f);
 
 	const float maxWidth = kShaftRight - kShaftLeft - 20.0f;
 
 	cage_.SetWidth((std::min)(newWidth, maxWidth));
 
-	// ==================== HP回復 ====================
-	// 新しくHEALを獲得した回数だけ回復
-	// 同じHEALを繰り返し適用しない
-
+	// HEALを新しく獲得した分だけHP回復
 	if (healLevel > appliedHealLevel_) {
 		const int newHealCount = healLevel - appliedHealLevel_;
 
@@ -97,10 +97,27 @@ void GameScene::ResumeAfterSkill(const SkillManager& skills) {
 		return;
 	}
 
+	// 獲得したスキルを反映
 	ApplySkills(skills);
 
+	// 敵・落石・矢をすべて削除
+	ClearHazards();
+
+	// トゲを初期状態に戻す
+	spike_.Initialize(cage_);
+
+	// 崩れる床を元に戻す
+	cage_.ResetFloor();
+
+	// プレイヤーを足場の初期位置に戻す
+	PutPlayerOnCage();
+
+	// ラウンド・WAVE・残り時間・HPは維持
 	damageTakenThisFrame_ = false;
-	state_ = State::Play;
+
+	// 1秒間停止してから再開
+	state_ = State::SkillReady;
+	stateTimer_ = 0;
 }
 
 // ==================== ラウンド開始 ====================
@@ -126,13 +143,15 @@ void GameScene::StartCircle() {
 	ClearHazards();
 	PutPlayerOnCage();
 
-	// HPは回復させない
+	// ラウンドが進んでもHPは回復しない
 	state_ = State::Play;
 	stateTimer_ = 0;
 	damageTakenThisFrame_ = false;
 }
 
 void GameScene::PutPlayerOnCage() { player_.Spawn(cage_.x + cage_.GetWidth() * 0.5f - kPlayerWidth * 0.5f, cage_.y - kPlayerHeight); }
+
+// ==================== 障害物削除 ====================
 
 void GameScene::ClearHazards() {
 	rocks_.clear();
@@ -153,6 +172,7 @@ bool GameScene::TakeDamage() {
 		return false;
 	}
 
+	// シールドでダメージを防ぐ
 	if (shieldCharges_ > 0) {
 		shieldCharges_--;
 		player_.RestoreOneHeart();
@@ -174,9 +194,11 @@ void GameScene::HandleDamageResult() {
 	}
 
 	if (player_.GetHearts() <= 0) {
+		// HP0ならゲームオーバー
 		state_ = State::GameOver;
 		ClearHazards();
 	} else {
+		// HPが残っていればスキル選択
 		state_ = State::SkillPending;
 	}
 
@@ -189,6 +211,7 @@ void GameScene::Update() {
 	stateTimer_++;
 
 	switch (state_) {
+
 	case State::Play:
 		UpdatePlay();
 		break;
@@ -220,6 +243,14 @@ void GameScene::Update() {
 
 		if (cage_.y >= kCageRestY) {
 			StartCircle();
+		}
+		break;
+
+	case State::SkillReady:
+		// 1秒間はプレイヤー・敵・WAVEを停止
+		if (stateTimer_ >= kSkillReadyFrames) {
+			state_ = State::Play;
+			stateTimer_ = 0;
 		}
 		break;
 
@@ -464,6 +495,8 @@ void GameScene::Draw() {
 
 	player_.Draw();
 	DrawHud();
+
+	// READY・GOの表示なし
 }
 
 // ==================== HUD ====================
