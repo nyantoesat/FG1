@@ -1,35 +1,34 @@
 #include "SkillManager.h"
+
 #include <algorithm>
 #include <random>
+#include <vector>
 
-// 初期化
 void SkillManager::Initialize() { skillLevels_.fill(0); }
 
-// スキルを3つ抽選
 std::array<SkillType, 3> SkillManager::GenerateChoices() const {
-	std::array<SkillType, 6> skills = {SkillType::LifeUp, SkillType::SpeedUp, SkillType::JumpUp, SkillType::Shield, SkillType::SlowDown, SkillType::FloorUp};
+
+	// 最大HP増加のLifeUpは除外
+	// HP回復のHealを追加
+	std::vector<SkillType> available = {SkillType::SpeedUp, SkillType::JumpUp, SkillType::Shield, SkillType::SlowDown, SkillType::FloorUp, SkillType::Heal};
 
 	static std::mt19937 engine(std::random_device{}());
 
-	std::shuffle(skills.begin(), skills.end(), engine);
+	std::shuffle(available.begin(), available.end(), engine);
 
-	return {skills[0], skills[1], skills[2]};
+	return {available[0], available[1], available[2]};
 }
 
-// スキルを獲得
 void SkillManager::AcquireSkill(SkillType skill) {
-	int index = static_cast<int>(skill);
+	const int index = static_cast<int>(skill);
 
-	if (index < 0 || index >= kSkillCount) {
-		return;
+	if (index >= 0 && index < kSkillCount) {
+		skillLevels_[index]++;
 	}
-
-	skillLevels_[index]++;
 }
 
-// スキルの獲得回数
 int SkillManager::GetSkillLevel(SkillType skill) const {
-	int index = static_cast<int>(skill);
+	const int index = static_cast<int>(skill);
 
 	if (index < 0 || index >= kSkillCount) {
 		return 0;
@@ -38,7 +37,6 @@ int SkillManager::GetSkillLevel(SkillType skill) const {
 	return skillLevels_[index];
 }
 
-// スキル名
 const char* SkillManager::GetSkillName(SkillType skill) {
 	switch (skill) {
 	case SkillType::LifeUp:
@@ -53,16 +51,17 @@ const char* SkillManager::GetSkillName(SkillType skill) {
 		return "SLOW DOWN";
 	case SkillType::FloorUp:
 		return "FLOOR UP";
+	case SkillType::Heal:
+		return "HEAL";
 	default:
 		return "UNKNOWN";
 	}
 }
 
-// スキル説明
 const char* SkillManager::GetSkillDescription(SkillType skill) {
 	switch (skill) {
 	case SkillType::LifeUp:
-		return "MAX LIFE +1";
+		return "NOT AVAILABLE";
 	case SkillType::SpeedUp:
 		return "MOVE SPEED +15%";
 	case SkillType::JumpUp:
@@ -73,6 +72,8 @@ const char* SkillManager::GetSkillDescription(SkillType skill) {
 		return "ENEMY SPEED DOWN";
 	case SkillType::FloorUp:
 		return "FLOOR WIDTH +20%";
+	case SkillType::Heal:
+		return "RESTORE 1 HP";
 	default:
 		return "";
 	}

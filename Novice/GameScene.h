@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include "Cage.h"
@@ -6,6 +5,7 @@
 #include "Map.h"
 #include "Player.h"
 #include "SkillManager.h"
+
 #include <vector>
 
 class GameScene {
@@ -14,17 +14,17 @@ public:
 	void Update();
 	void Draw();
 
-	// 死亡したラウンドから再開
-	void RestartCurrentRound(const SkillManager& skills);
+	void ResumeAfterSkill(const SkillManager& skills);
 
 	bool IsCleared() const;
 	bool IsGameOver() const;
+	bool NeedsSkillSelection() const;
 
 	int GetTotalRounds() const;
 	int GetReachedRound() const;
 
 private:
-	enum class State { Play, Descend, Arrive, GameOver };
+	enum class State { Play, Descend, Arrive, SkillPending, GameOver };
 
 	void StartCircle();
 	void UpdatePlay();
@@ -40,9 +40,10 @@ private:
 	void SpawnBat();
 
 	void DrawHud() const;
-
 	void ApplySkills(const SkillManager& skills);
+
 	bool TakeDamage();
+	void HandleDamageResult();
 
 	Map map_;
 	Cage cage_;
@@ -55,8 +56,8 @@ private:
 	Spike spike_;
 
 	State state_ = State::Play;
-	int stateTimer_ = 0;
 
+	int stateTimer_ = 0;
 	int totalRounds_ = 5;
 	int circle_ = 0;
 	int wave_ = 0;
@@ -64,15 +65,15 @@ private:
 
 	int waveTimer_ = 0;
 	int breakTimer_ = 0;
-
 	int rockTimer_ = 0;
 	int arrowTimer_ = 0;
 	int batTimer_ = 0;
 
-	// スキル関連
-	int baseLives_ = 3;
 	int shieldCharges_ = 0;
+	int appliedHealLevel_ = 0;
+
 	float enemySpeedScale_ = 1.0f;
 
 	bool cleared_ = false;
+	bool damageTakenThisFrame_ = false;
 };

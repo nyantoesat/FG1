@@ -1,44 +1,44 @@
-
 #include "GameScene.h"
+
 #include <Novice.h>
 #include <algorithm>
 
 namespace {
 
-int RockInterval(int circle, int wave) { return (std::max)(25, 90 - circle * 7 - wave * 10); }
+int RockInterval(int c, int w) { return (std::max)(25, 90 - 7 * c - 10 * w); }
 
-int ArrowInterval(int circle, int wave) { return (std::max)(45, 170 - circle * 12 - wave * 15); }
+int ArrowInterval(int c, int w) { return (std::max)(45, 170 - 12 * c - 15 * w); }
 
-int BatInterval(int circle, int wave) { return (std::max)(150, 480 - circle * 35 - wave * 40); }
+int BatInterval(int c, int w) { return (std::max)(150, 480 - 35 * c - 40 * w); }
 
-int MaxBats(int circle, int wave) { return 1 + circle / 2 + wave; }
+int MaxBats(int c, int w) { return 1 + c / 2 + w; }
 
-float BatSpeed(int circle) { return 1.8f + circle * 0.15f; }
-
-bool ArrowsEnabled(int circle) { return circle >= 1; }
+float BatSpeed(int c) { return 1.8f + c * 0.15f; }
 
 template<typename T> void RemoveDead(std::vector<T>& list) {
-	list.erase(std::remove_if(list.begin(), list.end(), [](const T& t) { return !t.alive; }), list.end());
+	list.erase(std::remove_if(list.begin(), list.end(), [](const T& item) { return !item.alive; }), list.end());
 }
 
 } // namespace
 
-// ===================== 初期化 =====================
+// ==================== 初期化 ====================
 
 void GameScene::Initialize(int totalRounds, int totalLives) {
 	map_.Initialize();
 
 	totalRounds_ = (std::max)(1, totalRounds);
-	baseLives_ = (std::max)(1, totalLives);
 
 	circle_ = 0;
 	batsKilled_ = 0;
 	cleared_ = false;
 
 	shieldCharges_ = 0;
+	appliedHealLevel_ = 0;
 	enemySpeedScale_ = 1.0f;
+	damageTakenThisFrame_ = false;
 
-	player_.SetMaxHearts(baseLives_);
+	// タイトル画面で設定したHP
+	player_.SetMaxHearts((std::max)(1, totalLives));
 	player_.SetMovementMultiplier(1.0f, 1.0f);
 
 	cage_.SetWidth(kCageWidth);
@@ -47,50 +47,63 @@ void GameScene::Initialize(int totalRounds, int totalLives) {
 	StartCircle();
 }
 
-// ===================== スキル =====================
+// ==================== スキル適用 ====================
 
 void GameScene::ApplySkills(const SkillManager& skills) {
-	int lifeLevel = skills.GetSkillLevel(SkillType::LifeUp);
+	const int speedLevel = skills.GetSkillLevel(SkillType::SpeedUp);
 
-	int speedLevel = skills.GetSkillLevel(SkillType::SpeedUp);
+	const int jumpLevel = skills.GetSkillLevel(SkillType::JumpUp);
 
-	int jumpLevel = skills.GetSkillLevel(SkillType::JumpUp);
+	const int shieldLevel = skills.GetSkillLevel(SkillType::Shield);
 
-	int shieldLevel = skills.GetSkillLevel(SkillType::Shield);
+	const int slowLevel = skills.GetSkillLevel(SkillType::SlowDown);
 
-	int slowLevel = skills.GetSkillLevel(SkillType::SlowDown);
+	const int floorLevel = skills.GetSkillLevel(SkillType::FloorUp);
 
-	int floorLevel = skills.GetSkillLevel(SkillType::FloorUp);
+	const int healLevel = skills.GetSkillLevel(SkillType::Heal);
 
-	// 最大ライフ増加
-	player_.SetMaxHearts(baseLives_ + lifeLevel);
-
-	// 移動速度・ジャンプ力
 	player_.SetMovementMultiplier(1.0f + speedLevel * 0.15f, 1.0f + jumpLevel * 0.15f);
 
-	// シールド
+	// シールドは取得数に応じて補充
 	shieldCharges_ = shieldLevel;
 
-	// 敵の移動速度を低下
 	enemySpeedScale_ = (std::max)(0.5f, 1.0f - slowLevel * 0.1f);
 
-	// 足場を左右均等に拡張
-	float newWidth = kCageWidth * (1.0f + floorLevel * 0.2f);
+	const float newWidth = kCageWidth * (1.0f + floorLevel * 0.2f);
 
-	float maxWidth = kShaftRight - kShaftLeft - 20.0f;
+	const float maxWidth = kShaftRight - kShaftLeft - 20.0f;
 
 	cage_.SetWidth((std::min)(newWidth, maxWidth));
+
+	// ==================== HP回復 ====================
+	// 新しくHEALを獲得した回数だけ回復
+	// 同じHEALを繰り返し適用しない
+
+	if (healLevel > appliedHealLevel_) {
+		const int newHealCount = healLevel - appliedHealLevel_;
+
+		for (int i = 0; i < newHealCount; i++) {
+			player_.RestoreOneHeart();
+		}
+
+		appliedHealLevel_ = healLevel;
+	}
 }
 
-// 死亡したラウンドから再開
-void GameScene::RestartCurrentRound(const SkillManager& skills) {
+// ==================== スキル選択後 ====================
+
+void GameScene::ResumeAfterSkill(const SkillManager& skills) {
+	if (state_ != State::SkillPending) {
+		return;
+	}
+
 	ApplySkills(skills);
 
-	// circle_は変更しない
-	StartCircle();
+	damageTakenThisFrame_ = false;
+	state_ = State::Play;
 }
 
-// ===================== ラウンド =====================
+// ==================== ラウンド開始 ====================
 
 void GameScene::StartCircle() {
 	wave_ = 0;
@@ -105,21 +118,20 @@ void GameScene::StartCircle() {
 	cage_.y = kCageRestY;
 	cage_.vy = 0.0f;
 
-	// ラウンド4から崩れる床
 	cage_.SetBreakEnabled(circle_ >= 3);
 	cage_.ResetFloor();
 
-	// トゲ床
 	spike_.Initialize(cage_);
 
 	ClearHazards();
 	PutPlayerOnCage();
 
+	// HPは回復させない
 	state_ = State::Play;
 	stateTimer_ = 0;
+	damageTakenThisFrame_ = false;
 }
 
-// プレイヤーを足場中央に配置
 void GameScene::PutPlayerOnCage() { player_.Spawn(cage_.x + cage_.GetWidth() * 0.5f - kPlayerWidth * 0.5f, cage_.y - kPlayerHeight); }
 
 void GameScene::ClearHazards() {
@@ -128,34 +140,55 @@ void GameScene::ClearHazards() {
 	bats_.clear();
 }
 
-// ===================== ダメージ =====================
+// ==================== ダメージ ====================
 
-// ダメージが通った場合はtrue
 bool GameScene::TakeDamage() {
-	int oldHearts = player_.GetHearts();
+	if (damageTakenThisFrame_) {
+		return false;
+	}
 
-	// Player::Damageで無敵時間を管理
+	const int before = player_.GetHearts();
+
 	if (!player_.Damage()) {
 		return false;
 	}
 
 	if (shieldCharges_ > 0) {
 		shieldCharges_--;
-
-		// シールドがライフ減少を打ち消す
 		player_.RestoreOneHeart();
+		return true;
 	}
 
-	return player_.GetHearts() < oldHearts || shieldCharges_ >= 0;
+	if (player_.GetHearts() < before) {
+		damageTakenThisFrame_ = true;
+	}
+
+	return true;
 }
 
-// ===================== 更新 =====================
+// ==================== 被弾後の状態 ====================
+
+void GameScene::HandleDamageResult() {
+	if (!damageTakenThisFrame_) {
+		return;
+	}
+
+	if (player_.GetHearts() <= 0) {
+		state_ = State::GameOver;
+		ClearHazards();
+	} else {
+		state_ = State::SkillPending;
+	}
+
+	stateTimer_ = 0;
+}
+
+// ==================== 更新 ====================
 
 void GameScene::Update() {
 	stateTimer_++;
 
 	switch (state_) {
-
 	case State::Play:
 		UpdatePlay();
 		break;
@@ -190,28 +223,30 @@ void GameScene::Update() {
 		}
 		break;
 
+	case State::SkillPending:
 	case State::GameOver:
 		break;
 	}
 }
 
-// ===================== プレイ中 =====================
+// ==================== プレイ中 ====================
 
 void GameScene::UpdatePlay() {
-	cage_.vy = 0.0f;
+	damageTakenThisFrame_ = false;
 
+	cage_.vy = 0.0f;
 	player_.Update(map_, cage_, true);
 
 	Rect p = player_.GetRect();
 
-	// ラウンド4から崩れる床
+	// 崩れる床
 	if (circle_ >= 3) {
-		bool onBreakFloor = player_.IsOnGround() && cage_.IsOnBreakFloor(p.x, p.x + p.w);
+		const bool onBreakFloor = player_.IsOnGround() && cage_.IsOnBreakFloor(p.x, p.x + p.w);
 
 		cage_.UpdateFloor(onBreakFloor);
 	}
 
-	// ラウンド3からトゲ床
+	// トゲ
 	if (circle_ >= 2) {
 		spike_.Update(cage_);
 
@@ -220,16 +255,21 @@ void GameScene::UpdatePlay() {
 		}
 	}
 
-	// 落下時の処理
+	// 落下ダメージ
 	if (player_.FellOut()) {
+		const int before = player_.GetHearts();
+
 		player_.LoseHeart();
+
+		if (player_.GetHearts() < before) {
+			damageTakenThisFrame_ = true;
+		}
+
 		PutPlayerOnCage();
 	}
 
-	if (player_.GetHearts() <= 0) {
-		ClearHazards();
-		state_ = State::GameOver;
-		stateTimer_ = 0;
+	if (damageTakenThisFrame_) {
+		HandleDamageResult();
 		return;
 	}
 
@@ -239,17 +279,14 @@ void GameScene::UpdatePlay() {
 		return;
 	}
 
-	// 落石
 	for (Rock& r : rocks_) {
 		r.Update(cage_, enemySpeedScale_);
 	}
 
-	// 矢
 	for (Arrow& a : arrows_) {
 		a.Update(enemySpeedScale_);
 	}
 
-	// コウモリ
 	for (Bat& b : bats_) {
 		b.Update(player_.GetCenter(), enemySpeedScale_);
 	}
@@ -260,14 +297,12 @@ void GameScene::UpdatePlay() {
 	RemoveDead(arrows_);
 	RemoveDead(bats_);
 
-	if (player_.GetHearts() <= 0) {
-		ClearHazards();
-		state_ = State::GameOver;
-		stateTimer_ = 0;
+	if (damageTakenThisFrame_) {
+		HandleDamageResult();
 	}
 }
 
-// ===================== ウェーブ =====================
+// ==================== ウェーブ ====================
 
 void GameScene::UpdateWaves() {
 	if (breakTimer_ > 0) {
@@ -296,7 +331,7 @@ void GameScene::UpdateWaves() {
 	}
 }
 
-// ===================== 障害物生成 =====================
+// ==================== 障害物生成 ====================
 
 void GameScene::SpawnHazards() {
 	if (--rockTimer_ <= 0) {
@@ -304,7 +339,7 @@ void GameScene::SpawnHazards() {
 		rockTimer_ = RockInterval(circle_, wave_);
 	}
 
-	if (ArrowsEnabled(circle_) && --arrowTimer_ <= 0) {
+	if (circle_ >= 1 && --arrowTimer_ <= 0) {
 		SpawnArrow();
 		arrowTimer_ = ArrowInterval(circle_, wave_);
 	}
@@ -353,37 +388,45 @@ void GameScene::SpawnBat() {
 	bats_.push_back(b);
 }
 
-// ===================== 当たり判定 =====================
+// ==================== 当たり判定 ====================
 
 void GameScene::CheckHits() {
 	Rect p = player_.GetRect();
 
-	// 落石
 	for (Rock& r : rocks_) {
+		if (damageTakenThisFrame_) {
+			break;
+		}
+
 		if (r.IsDangerous() && Intersects(p, r.GetRect())) {
 			TakeDamage();
 		}
 	}
 
-	// 矢
 	for (Arrow& a : arrows_) {
-		if (a.IsDangerous() && Intersects(p, a.GetRect())) {
+		if (damageTakenThisFrame_) {
+			break;
+		}
 
+		if (a.IsDangerous() && Intersects(p, a.GetRect())) {
 			if (TakeDamage()) {
 				a.alive = false;
 			}
 		}
 	}
 
-	// コウモリ
 	for (Bat& b : bats_) {
+		if (damageTakenThisFrame_) {
+			break;
+		}
+
 		Rect br = b.GetRect();
 
 		if (!Intersects(p, br)) {
 			continue;
 		}
 
-		bool stomp = player_.GetVelocity().y > 0.0f && player_.GetPrevBottom() <= br.y + 10.0f;
+		const bool stomp = player_.GetVelocity().y > 0.0f && player_.GetPrevBottom() <= br.y + 10.0f;
 
 		if (stomp) {
 			b.alive = false;
@@ -395,7 +438,7 @@ void GameScene::CheckHits() {
 	}
 }
 
-// ===================== 描画 =====================
+// ==================== 描画 ====================
 
 void GameScene::Draw() {
 	Novice::DrawBox(0, 0, kWindowWidth, kWindowHeight, 0.0f, 0x1C2033FF, kFillModeSolid);
@@ -403,7 +446,6 @@ void GameScene::Draw() {
 	map_.Draw();
 	cage_.Draw();
 
-	// ラウンド3から表示
 	if (state_ == State::Play && circle_ >= 2) {
 		spike_.Draw();
 	}
@@ -424,34 +466,34 @@ void GameScene::Draw() {
 	DrawHud();
 }
 
-// ===================== HUD =====================
+// ==================== HUD ====================
 
 void GameScene::DrawHud() const {
-	int hearts = player_.GetHearts();
-	int maxHearts = player_.GetMaxHearts();
-
-	for (int i = 0; i < maxHearts; i++) {
-		unsigned int color = i < hearts ? 0x8FDCC8FF : 0x3E4A5AFF;
-
-		Novice::DrawBox(640 - maxHearts * 20 + i * 40 + 6, 20, 28, 24, 0.0f, color, kFillModeSolid);
-	}
+	const int hearts = player_.GetHearts();
+	const int maxHearts = player_.GetMaxHearts();
 
 	Novice::ScreenPrintf(20, 20, "ROUND %d / %d", (std::min)(circle_ + 1, totalRounds_), totalRounds_);
 
-	Novice::ScreenPrintf(20, 40, "LIVES %d", hearts);
+	Novice::ScreenPrintf(20, 45, "HP %d / %d", hearts, maxHearts);
 
-	Novice::ScreenPrintf(20, 60, "BATS %d", batsKilled_);
+	for (int i = 0; i < maxHearts; i++) {
+		const unsigned int color = i < hearts ? 0xFF5555FF : 0x444455FF;
 
-	Novice::ScreenPrintf(20, 80, "SHIELD %d", shieldCharges_);
+		Novice::DrawBox(20 + i * 38, 70, 28, 24, 0.0f, color, kFillModeSolid);
+	}
+
+	Novice::ScreenPrintf(20, 110, "SHIELD %d", shieldCharges_);
+
+	Novice::ScreenPrintf(20, 135, "BATS %d", batsKilled_);
 
 	Novice::ScreenPrintf(1000, 20, "WAVE %d / %d", (std::min)(wave_ + 1, kWavesPerCircle), kWavesPerCircle);
 
 	if (state_ == State::Play) {
-		float t = breakTimer_ > 0 ? 1.0f : (float)waveTimer_ / kWaveFrames;
+		const float t = breakTimer_ > 0 ? 1.0f : (float)waveTimer_ / kWaveFrames;
 
 		Novice::DrawBox(1000, 44, 200, 8, 0.0f, 0x3E4A5AFF, kFillModeSolid);
 
-		Novice::DrawBox(1000, 44, (int)(200 * t), 8, 0.0f, 0x8FDCC8FF, kFillModeSolid);
+		Novice::DrawBox(1000, 44, (int)(200.0f * t), 8, 0.0f, 0x8FDCC8FF, kFillModeSolid);
 
 		if (breakTimer_ > 0) {
 			Novice::ScreenPrintf(590, 300, "ROUND %d", circle_ + 1);
@@ -465,11 +507,13 @@ void GameScene::DrawHud() const {
 	}
 }
 
-// ===================== 状態取得 =====================
+// ==================== 状態取得 ====================
 
 bool GameScene::IsCleared() const { return cleared_; }
 
 bool GameScene::IsGameOver() const { return state_ == State::GameOver; }
+
+bool GameScene::NeedsSkillSelection() const { return state_ == State::SkillPending; }
 
 int GameScene::GetTotalRounds() const { return totalRounds_; }
 

@@ -1,6 +1,7 @@
 
 #include "TitleScene.h"
 #include "Input.h"
+
 #include <Novice.h>
 #include <dinput.h>
 
@@ -16,7 +17,7 @@ void TitleScene::Initialize() {
 void TitleScene::Update() {
 	timer_++;
 
-	// 上下キーで項目を選択
+	// 上下キーで項目選択
 	if (timer_ % 10 == 0) {
 		if (Novice::CheckHitKey(DIK_UP)) {
 			selectedItem_ = 0;
@@ -50,7 +51,7 @@ void TitleScene::Update() {
 		}
 	}
 
-	// SPACEでゲーム開始
+	// SPACEで開始
 	if (Input::JumpTrigger()) {
 		finished_ = true;
 	}
@@ -63,11 +64,15 @@ void TitleScene::Draw() {
 
 	Novice::ScreenPrintf(510, 300, "%s ROUNDS : < %d >", selectedItem_ == 0 ? ">" : " ", selectedRounds_);
 
-	Novice::ScreenPrintf(510, 340, "%s LIVES  : < %d >", selectedItem_ == 1 ? ">" : " ", selectedLives_);
+	Novice::ScreenPrintf(510, 340, "%s HP     : < %d >", selectedItem_ == 1 ? ">" : " ", selectedLives_);
 
-	Novice::ScreenPrintf(480, 410, "UP / DOWN : SELECT");
-	Novice::ScreenPrintf(480, 440, "LEFT / RIGHT : CHANGE");
-	Novice::ScreenPrintf(520, 490, "SPACE : START");
+	Novice::ScreenPrintf(440, 390, "TAKE DAMAGE TO GET A SKILL");
+
+	Novice::ScreenPrintf(480, 440, "UP / DOWN : SELECT");
+
+	Novice::ScreenPrintf(480, 470, "LEFT / RIGHT : CHANGE");
+
+	Novice::ScreenPrintf(520, 520, "SPACE : START");
 }
 
 bool TitleScene::IsFinished() const { return finished_; }
@@ -75,3 +80,5 @@ bool TitleScene::IsFinished() const { return finished_; }
 int TitleScene::GetSelectedRounds() const { return selectedRounds_; }
 
 int TitleScene::GetSelectedLives() const { return selectedLives_; }
+
+int TitleScene::GetSelectedStocks() const { return selectedLives_; }

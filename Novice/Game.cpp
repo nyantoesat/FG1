@@ -4,6 +4,7 @@
 void Game::Initialize() {
 	titleScene_.Initialize();
 	skillManager_.Initialize();
+
 	scene_ = Scene::Title;
 }
 
@@ -14,11 +15,14 @@ void Game::Update() {
 		titleScene_.Update();
 
 		if (titleScene_.IsFinished()) {
-			int rounds = titleScene_.GetSelectedRounds();
-			int lives = titleScene_.GetSelectedLives();
+			const int rounds = titleScene_.GetSelectedRounds();
+
+			const int hp = titleScene_.GetSelectedLives();
 
 			skillManager_.Initialize();
-			gameScene_.Initialize(rounds, lives);
+
+			// 選択したラウンド数とHPを渡す
+			gameScene_.Initialize(rounds, hp);
 
 			scene_ = Scene::Playing;
 		}
@@ -29,9 +33,15 @@ void Game::Update() {
 
 		if (gameScene_.IsCleared()) {
 			clearScene_.Initialize(gameScene_.GetTotalRounds());
+
 			scene_ = Scene::Clear;
 		} else if (gameScene_.IsGameOver()) {
+			gameOverScene_.Initialize(gameScene_.GetReachedRound());
+
+			scene_ = Scene::GameOver;
+		} else if (gameScene_.NeedsSkillSelection()) {
 			skillSelectScene_.Initialize(skillManager_);
+
 			scene_ = Scene::SkillSelect;
 		}
 		break;
@@ -40,12 +50,12 @@ void Game::Update() {
 		skillSelectScene_.Update();
 
 		if (skillSelectScene_.IsFinished()) {
-			SkillType selectedSkill = skillSelectScene_.GetSelectedSkill();
+			const SkillType skill = skillSelectScene_.GetSelectedSkill();
 
-			skillManager_.AcquireSkill(selectedSkill);
+			skillManager_.AcquireSkill(skill);
 
-			// 死亡したラウンドから再開
-			gameScene_.RestartCurrentRound(skillManager_);
+			// HP・ラウンド・位置を維持して再開
+			gameScene_.ResumeAfterSkill(skillManager_);
 
 			scene_ = Scene::Playing;
 		}
@@ -73,7 +83,6 @@ void Game::Update() {
 
 void Game::Draw() {
 	switch (scene_) {
-
 	case Scene::Title:
 		titleScene_.Draw();
 		break;

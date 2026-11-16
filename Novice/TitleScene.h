@@ -8,8 +8,10 @@ public:
 	void Draw();
 
 	bool IsFinished() const;
+
 	int GetSelectedRounds() const;
 	int GetSelectedLives() const;
+	int GetSelectedStocks() const;
 
 private:
 	int selectedRounds_ = 5;
